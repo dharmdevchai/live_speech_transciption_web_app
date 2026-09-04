@@ -10,7 +10,9 @@ const SpeechToText2 = () => {
   const [finalText, setFinalText] = useState("");
   const [interimText, setInterimText] = useState("");
   const [copied, setCopied] = useState(false);
+  const [baseUrl, setBaseUrl] = useState("http://127.0.0.1:8000");
   const scrollRef = useRef<HTMLDivElement>(null);
+  const lastProcessedLengthRef = useRef(0);
 
   const handleTranscriptUpdate = useCallback((update: TranscriptUpdate) => {
     setFinalText(update.finalText);
@@ -36,6 +38,30 @@ const SpeechToText2 = () => {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
   }, [finalText, interimText]);
+
+  useEffect(() => {
+    if (!finalText) {
+      lastProcessedLengthRef.current = 0;
+      return;
+    }
+
+    if (finalText.length > lastProcessedLengthRef.current) {
+      const newPhrase = finalText.slice(lastProcessedLengthRef.current).trim();
+      lastProcessedLengthRef.current = finalText.length;
+
+      if (newPhrase && baseUrl) {
+        const cleanBaseUrl = baseUrl.replace(/\/$/, "");
+        fetch(`${cleanBaseUrl}/receive-text?query=${encodeURIComponent(newPhrase)}`)
+          .then((res) => res.json())
+          .then((data) => {
+            console.log("Forwarded to agent:", data);
+          })
+          .catch((err) => {
+            console.error("Failed to send phrase:", err);
+          });
+      }
+    }
+  }, [finalText, baseUrl]);
 
   const fullText = [finalText, interimText]
     .filter(Boolean)
@@ -65,6 +91,7 @@ const SpeechToText2 = () => {
     clearTranscript();
     setFinalText("");
     setInterimText("");
+    lastProcessedLengthRef.current = 0;
   };
 
   if (!isMounted) {
@@ -102,6 +129,20 @@ const SpeechToText2 = () => {
           </p>
         </div>
 
+        <div className="rounded-xl border border-zinc-200 bg-white p-4 shadow-sm space-y-2">
+          <label className="block text-xs font-medium text-zinc-600">
+            Agent Base URL
+          </label>
+          <input
+            type="text"
+            value={baseUrl}
+            onChange={(e) => setBaseUrl(e.target.value)}
+            placeholder="http://127.0.0.1:8000"
+            className="w-full rounded-lg border border-zinc-200 bg-zinc-50 px-3 py-2 text-sm text-zinc-900 outline-none focus:border-zinc-400"
+            autoComplete="off"
+          />
+        </div>
+
         <div className="flex justify-center">
           {isListening ? (
             <div className="flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-emerald-50 border border-emerald-200">
@@ -123,7 +164,6 @@ const SpeechToText2 = () => {
           )}
         </div>
 
-        {/* Black = final, Gray = current interim */}
         <div className="relative">
           <div
             ref={scrollRef}
@@ -158,7 +198,7 @@ const SpeechToText2 = () => {
         {(permissionDenied || errorMessage) && (
           <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
             {errorMessage ||
-              "Microphone access denied. Allow it from the address bar and try again."}
+              "Microphone permission denied. Allow it from the address bar and try again."}
           </div>
         )}
 
